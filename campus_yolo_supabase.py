@@ -184,7 +184,12 @@ try:
                     break
             continue
 
-        results = model.predict(frame, imgsz=INFERENCE_SIZE, verbose=False)
+        results = results = model.predict(
+	    frame,
+	    classes=[0],      # <--- Only detect PERSON
+	    imgsz=INFERENCE_SIZE,
+	    verbose=False
+	)
 
         people_count = 0
         if len(results) > 0:
