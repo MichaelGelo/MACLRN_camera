@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>CAMPUS Occupancy Dashboard</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <!-- Tailwind CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+
+  <!-- Supabase JS v2 -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+
+<body class="bg-slate-900 text-slate-100 min-h-screen">
+
+<div class="max-w-6xl mx-auto px-4 py-6 space-y-6">
+
+  <!-- Header -->
+  <header class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+    <div>
+      <h1 class="text-2xl font-bold tracking-tight">CAMPUS Occupancy Dashboard</h1>
+      <p class="text-sm text-slate-400">Live data from Supabase, logged by Jetson Orin running YOLOv8.</p>
+    </div>
+
+    <div class="flex items-center gap-2">
+      <span class="text-sm text-slate-400">Room:</span>
+      <select id="roomSelect"
+              class="bg-slate-800 border border-slate-700 text-sm rounded px-2 py-1">
+        <option value="GK407" selected>GK407</option>
+        <option value="CL305">CL305</option>
+        <option value="ALL">All Rooms</option>
+      </select>
+    </div>
+  </header>
+
+  <!-- Alert Banner -->
+  <div id="alertBanner"
+       class="hidden rounded-lg border border-red-500 bg-red-900/40 px-4 py-3">
+    <p class="font-semibold text-red-200" id="alertMessage">High occupancy detected.</p>
+  </div>
+
+  <!-- Status + Snapshot -->
+  <section class="grid grid-cols-1 md:grid-cols-3 gap-4">
+
+    <!-- Status -->
+    <div class="bg-slate-800/80 border border-slate-700 rounded-xl p-4 space-y-2">
+      <h2 class="text-lg font-semibold">Current Status</h2>
+      <p class="text-xs text-slate-400">Based on latest log entry</p>
+
+      <div class="mt-3 space-y-2">
+        <div class="flex justify-between text-sm">
+          <span class="text-slate-400">Room</span>
+          <span id="currentRoom" class="font-semibold">–</span>
+        </div>
+
+        <div class="flex justify-between text-sm">
+          <span class="text-slate-400">Status</span>
+          <span id="currentStatus" class="font-semibold">–</span>
+        </div>
+
+        <div class="flex justify-between text-sm">
+          <span class="text-slate-400">People Count</span>
+          <span id="currentCount" class="font-semibold">–</span>
+        </div>
+
+        <div class="flex justify-between text-sm">
+          <span class="text-slate-400">FPS</span>
+          <span id="currentFps" class="font-semibold">–</span>
+        </div>
+
+        <div class="flex justify-between text-xs border-t border-slate-700 pt-1 mt-2">
+          <span class="text-slate-500">Last update</span>
+          <span id="currentTimestamp" class="text-slate-300">–</span>
+        </div>
+
+        <div class="flex justify-between text-xs">
+          <span class="text-slate-500">Model</span>
+          <span id="currentModel" class="text-slate-300">–</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Snapshot -->
+    <div class="md:col-span-2 bg-slate-800/80 border border-slate-700 rounded-xl p-4">
+      <div class="flex items-center justify-between mb-2">
+        <h2 class="text-lg font-semibold">Latest Snapshot</h2>
+        <span id="snapshotInfo" class="text-xs text-slate-400">No image yet</span>
+      </div>
+
+      <div class="aspect-video bg-slate-900/70 rounded-lg flex items-center justify-center overflow-hidden">
+        <img id="latestImage"
+             class="max-h-full max-w-full object-contain hidden">
+        <span id="noImageText" class="text-slate-500 text-sm">Waiting for first image...</span>
+      </div>
+    </div>
+
+  </section>
+
+  <!-- Chart + Recent Logs -->
+  <section class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+
+    <!-- Chart -->
+    <div class="lg:col-span-2 bg-slate-800/80 border border-slate-700 rounded-xl p-4">
+      <div class="flex items-center justify-between mb-2">
+        <h2 class="text-lg font-semibold">Occupancy Over Time</h2>
+        <span class="text-xs text-slate-400">Last 50 events</span>
+      </div>
+      <canvas id="occupancyChart" class="w-full h-64"></canvas>
+    </div>
+
+    <!-- Logs -->
+    <div class="bg-slate-800/80 border border-slate-700 rounded-xl p-4">
+      <div class="flex items-center justify-between mb-2">
+        <h2 class="text-lg font-semibold">Recent Events</h2>
+        <span class="text-xs text-slate-400">Auto-refresh every 10s</span>
+      </div>
+
+      <div class="max-h-72 overflow-auto text-xs">
+        <table class="w-full text-left border-collapse">
+          <thead class="sticky top-0 bg-slate-900">
+            <tr>
+              <th class="py-1 pr-2 border-b border-slate-700">Time</th>
+              <th class="py-1 pr-2 border-b border-slate-700">Room</th>
+              <th class="py-1 pr-2 border-b border-slate-700">Status</th>
+              <th class="py-1 pr-2 border-b border-slate-700 text-right">Count</th>
+              <th class="py-1 pr-2 border-b border-slate-700 text-right">FPS</th>
+            </tr>
+          </thead>
+          <tbody id="logsTableBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+  </section>
+
+</div>
+
+<script>
+  // CONFIG
+  const SUPABASE_URL = "https://zpezidrqlotoyequnywe.supabase.co";
+  const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpwZXppZHJxbG90b3llcXVueXdlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQyMTE5MzQsImV4cCI6MjA3OTc4NzkzNH0.mWBIhSNpmSaoPN1rytp9JlXdcv_kG9i6aNqBwxGo4q0";
+
+  const OCCUPANCY_ALERT_THRESHOLD = 5;
+
+  const { createClient } = supabase;
+  const sb = createClient(SUPABASE_URL, SUPABASE_KEY);
+
+  const roomSelect = document.getElementById("roomSelect");
+
+  const currentRoomEl = document.getElementById("currentRoom");
+  const currentStatusEl = document.getElementById("currentStatus");
+  const currentCountEl = document.getElementById("currentCount");
+  const currentFpsEl = document.getElementById("currentFps");
+  const currentTimestampEl = document.getElementById("currentTimestamp");
+  const currentModelEl = document.getElementById("currentModel");
+
+  const latestImageEl = document.getElementById("latestImage");
+  const noImageTextEl = document.getElementById("noImageText");
+  const snapshotInfoEl = document.getElementById("snapshotInfo");
+
+  const logsTableBody = document.getElementById("logsTableBody");
+  const alertBanner = document.getElementById("alertBanner");
+  const alertMessage = document.getElementById("alertMessage");
+
+  // Chart.js
+  const chart = new Chart(
+    document.getElementById("occupancyChart"),
+    {
+      type: "line",
+      data: { labels: [], datasets: [{ label: "People Count", data: [], borderWidth: 2 }] },
+      options: {
+        responsive: true,
+        scales: {
+          y: { beginAtZero: true }
+        }
+      }
+    }
+  );
+
+  function formatTime(iso) {
+    if (!iso) return "–";
+    const d = new Date(iso);
+    return d.toLocaleTimeString("en-PH", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  }
+
+  function updateAlert(latest) {
+    if (latest && latest.status === "occupied" && latest.count >= OCCUPANCY_ALERT_THRESHOLD) {
+      alertMessage.textContent = `High occupancy: ${latest.count} people`;
+      alertBanner.classList.remove("hidden");
+    } else {
+      alertBanner.classList.add("hidden");
+    }
+  }
+
+  function renderDashboard(rows) {
+    if (!rows.length) {
+      chart.data.labels = [];
+      chart.data.datasets[0].data = [];
+      chart.update();
+      logsTableBody.innerHTML = "";
+      return;
+    }
+
+    const latest = rows[0];
+
+    // Status card
+    currentRoomEl.textContent = latest.room;
+    currentStatusEl.textContent = latest.status;
+    currentCountEl.textContent = latest.count;
+    currentFpsEl.textContent = latest.jetson_fps;
+    currentTimestampEl.textContent = new Date(latest.timestamp).toLocaleString();
+    currentModelEl.textContent = latest.model_name;
+
+    // Snapshot
+    if (latest.image_url) {
+      latestImageEl.src = latest.image_url;
+      latestImageEl.classList.remove("hidden");
+      noImageTextEl.classList.add("hidden");
+      snapshotInfoEl.textContent = "Latest uploaded frame";
+    } else {
+      latestImageEl.classList.add("hidden");
+      noImageTextEl.classList.remove("hidden");
+      snapshotInfoEl.textContent = "No image available";
+    }
+
+    // Logs table
+    logsTableBody.innerHTML = rows
+      .map(row => `
+        <tr>
+          <td class="py-1">${formatTime(row.timestamp)}</td>
+          <td>${row.room}</td>
+          <td>${row.status}</td>
+          <td class="text-right">${row.count}</td>
+          <td class="text-right">${row.jetson_fps}</td>
+        </tr>
+      `)
+      .join("");
+
+    // Chart (no cumulative)
+    chart.data.labels = rows.slice().reverse().map(r => formatTime(r.timestamp));
+    chart.data.datasets[0].data = rows.slice().reverse().map(r => r.count);
+    chart.update();
+
+    // Alert
+    updateAlert(latest);
+  }
+
+  async function fetchLogs() {
+    let q = sb.from("occupancy_logs")
+      .select("*")
+      .order("timestamp", { ascending: false })
+      .limit(50);
+
+    if (roomSelect.value !== "ALL") {
+      q = q.eq("room", roomSelect.value);
+    }
+
+    const { data } = await q;
+    renderDashboard(data || []);
+  }
+
+  fetchLogs();
+  setInterval(fetchLogs, 5000);
+  roomSelect.addEventListener("change", fetchLogs);
+
+</script>
+</body>
+</html>
