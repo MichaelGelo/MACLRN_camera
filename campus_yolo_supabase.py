@@ -111,7 +111,7 @@ def insert_log(count_value, status, fps_value, image_url=None):
 
 # -------------- YOLO SETUP --------------
 
-model_path = "yolov8n.engine" if os.path.exists("yolov8n.engine") else "yolov8n.pt"
+model_path = "yolov8n.engine" if os.path.exists("yolov8n.engine") else "700img.pt"
 model_name = os.path.basename(model_path)
 
 print("Using model:", model_name)

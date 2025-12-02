@@ -116,7 +116,6 @@
     <div class="bg-slate-800/80 border border-slate-700 rounded-xl p-4">
       <div class="flex items-center justify-between mb-2">
         <h2 class="text-lg font-semibold">Recent Events</h2>
-        <span class="text-xs text-slate-400">Auto-refresh every 10s</span>
       </div>
 
       <div class="max-h-72 overflow-auto text-xs">
@@ -195,6 +194,36 @@
       alertBanner.classList.add("hidden");
     }
   }
+function formatUtcDateTime(iso) {
+  const d = new Date(iso);
+  const month = d.getUTCMonth() + 1;
+  const day = d.getUTCDate();
+  const year = d.getUTCFullYear();
+
+  let hours = d.getUTCHours();
+  const minutes = String(d.getUTCMinutes()).padStart(2, "0");
+  const seconds = String(d.getUTCSeconds()).padStart(2, "0");
+
+  const ampm = hours >= 12 ? "PM" : "AM";
+  hours = hours % 12;
+  hours = hours ? hours : 12;
+
+  return `${month}/${day}/${year}, ${hours}:${minutes}:${seconds} ${ampm}`;
+}
+
+  function formatUtcTime(iso) {
+    const d = new Date(iso);
+
+    let hours = d.getUTCHours();
+    const minutes = String(d.getUTCMinutes()).padStart(2, "0");
+    const seconds = String(d.getUTCSeconds()).padStart(2, "0");
+
+    const ampm = hours >= 12 ? "PM" : "AM";
+    hours = hours % 12;
+    hours = hours ? hours : 12;
+
+    return `${hours}:${minutes}:${seconds} ${ampm}`;
+  }
 
   function renderDashboard(rows) {
     if (!rows.length) {
@@ -212,7 +241,7 @@
     currentStatusEl.textContent = latest.status;
     currentCountEl.textContent = latest.count;
     currentFpsEl.textContent = latest.jetson_fps;
-    currentTimestampEl.textContent = new Date(latest.timestamp).toLocaleString();
+    currentTimestampEl.textContent = formatUtcDateTime(latest.timestamp);
     currentModelEl.textContent = latest.model_name;
 
     // Snapshot
@@ -231,7 +260,7 @@
     logsTableBody.innerHTML = rows
       .map(row => `
         <tr>
-          <td class="py-1">${formatTime(row.timestamp)}</td>
+          <td class="py 1">${formatUtcTime(row.timestamp)}</td>
           <td>${row.room}</td>
           <td>${row.status}</td>
           <td class="text-right">${row.count}</td>
